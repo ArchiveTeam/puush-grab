@@ -206,7 +206,7 @@ pipeline = Pipeline(
       "-U", USER_AGENT,
       "-nv",
       "-o", ItemInterpolation("%(item_dir)s/wget.log"),
-#      "--lua-script", "puush.lua",
+      "--lua-script", "puush.lua",
       "--no-check-certificate",
       "--output-document", ItemInterpolation("%(item_dir)s/wget.tmp"),
       "--truncate-output",
