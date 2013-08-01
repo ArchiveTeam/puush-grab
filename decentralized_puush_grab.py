@@ -12,8 +12,18 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-VERSION = 20130731.1
+VERSION = 20130801.01
 USER_AGENT = 'ArchiveTeam DPG/{}'.format(VERSION)
+
+EXIT_STATUS_PERMISSION_DENIED = 100
+EXIT_STATUS_NOT_FOUND = 101
+EXIT_STATUS_OTHER_ERROR = 102
+
+USER_RESULT_MSG = {
+    EXIT_STATUS_PERMISSION_DENIED: 'Permission denied',
+    EXIT_STATUS_NOT_FOUND: 'Not found',
+    EXIT_STATUS_OTHER_ERROR: 'Other error',
+}
 
 # Be careful! Some implementations have the ordering of upper and lower case
 # differently
@@ -114,7 +124,8 @@ class Grabber(object):
         self._save_report(item_name)
 
         if return_code not in [0]:
-            _logger.info('Failed')
+            _logger.info('Failed ({}: {})'.format(return_code,
+                USER_RESULT_MSG.get(return_code)))
             self._throttle(True)
         else:
             self._move_files(item_name)
