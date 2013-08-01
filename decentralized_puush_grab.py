@@ -12,7 +12,7 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-VERSION = 20130731.0
+VERSION = 20130731.1
 USER_AGENT = 'ArchiveTeam DPG/{}'.format(VERSION)
 
 # Be careful! Some implementations have the ordering of upper and lower case
@@ -63,7 +63,7 @@ class Grabber(object):
     def __init__(self, min_delay):
         self._max_int = base62_decode('40000')
         self._min_delay = min_delay
-        self._seconds_throttle = min_delay
+        self._seconds_throttle = 1.0
         self._start_time = time.time()
         self._data_dir = os.path.abspath('data')
         self._report_dir = os.path.abspath('report')
@@ -183,14 +183,14 @@ class Grabber(object):
             self._seconds_throttle *= 2.0
             self._seconds_throttle = min(3600.0, self._seconds_throttle)
         else:
-            self._seconds_throttle = self._min_delay
+            self._seconds_throttle = 1.0
 
-        self._seconds_throttle *= random.uniform(0.5, 1.5)
+        delay_time = self._min_delay + self._seconds_throttle
+        delay_time *= random.uniform(0.8, 1.2)
 
-        _logger.info('Next download in {:.1f} seconds'.format(
-            self._seconds_throttle))
+        _logger.info('Next download in {:.1f} seconds'.format(delay_time))
 
-        self._next_time = time.time() + self._seconds_throttle
+        self._next_time = time.time() + delay_time
 
 
 if __name__ == '__main__':
