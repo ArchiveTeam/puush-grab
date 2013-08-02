@@ -9,10 +9,13 @@ from seesaw.tracker import (TrackerRequest, PrepareStatsForTracker,
     UploadWithTracker, SendDoneToTracker, GetItemFromTracker)
 from seesaw.util import find_executable
 from tornado.ioloop import IOLoop, PeriodicCallback
+import datetime
 import fcntl
+import functools
 import json
 import os
 import pty
+import random
 import seesaw
 import seesaw.externalprocess
 import shutil
@@ -91,12 +94,18 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20130801.01"
+VERSION = "20130801.02"
 USER_AGENT = "ArchiveTeam"
 # TRACKER_ID = 'test1'
 # TRACKER_HOST = 'localhost:8030'
 TRACKER_ID = 'puush'
 TRACKER_HOST = 'tracker.archiveteam.org'
+
+# these must match from the lua script
+EXIT_STATUS_PERMISSION_DENIED = 100
+EXIT_STATUS_NOT_FOUND = 101
+EXIT_STATUS_OTHER_ERROR = 102
+
 
 ###########################################################################
 # This section defines project-specific tasks.
@@ -142,7 +151,8 @@ class PrepareDirectories(SimpleTask):
 
         item["item_dir"] = dirname
         item["warc_file_base"] = "%s-%s-%s" % (
-            self.warc_prefix, item["item_name"], time.strftime("%Y%m%d-%H%M%S"))
+            self.warc_prefix, item["item_name"],
+            time.strftime("%Y%m%d-%H%M%S"))
 
         open("%(item_dir)s/%(warc_file_base)s.warc.gz" % item, "w").close()
 
@@ -151,6 +161,18 @@ class WgetDownloadSaveExitStatus(WgetDownload):
     def handle_process_result(self, exit_code, item):
         item['wget_exit_status'] = exit_code
         WgetDownload.handle_process_result(self, exit_code, item)
+
+    def handle_process_error(self, exit_code, item):
+        if exit_code == EXIT_STATUS_OTHER_ERROR:
+            delay_seconds = random.randint(60 * 4, 60 * 6)
+            item.log_output('Unexpected response from server. '
+                'Waiting for %d seconds before continuing...' % delay_seconds)
+            IOLoop.instance().add_timeout(
+                datetime.timedelta(seconds=delay_seconds),
+                functools.partial(WgetDownload.handle_process_error,
+                    self, exit_code, item))
+        else:
+            WgetDownload.handle_process_error(self, exit_code, item)
 
 
 class MoveFiles(SimpleTask):
@@ -220,7 +242,8 @@ pipeline = Pipeline(
           ItemInterpolation("http://puu.sh/%(item_name)s")
         ],
         max_tries=2,
-        accept_on_exit_code=[0, 100, 101],  # see the lua script
+        accept_on_exit_code=[0, EXIT_STATUS_PERMISSION_DENIED,
+            EXIT_STATUS_NOT_FOUND],  # see the lua script
     ),
     ConditionalTask(
         is_wget_exit_ok,
