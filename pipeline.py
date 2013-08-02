@@ -4,9 +4,9 @@ from seesaw.externalprocess import WgetDownload
 from seesaw.item import ItemInterpolation, ItemValue
 from seesaw.pipeline import Pipeline
 from seesaw.project import Project
-from seesaw.task import SimpleTask, LimitConcurrent
+from seesaw.task import SimpleTask, LimitConcurrent, ConditionalTask
 from seesaw.tracker import (TrackerRequest, PrepareStatsForTracker,
-    UploadWithTracker, SendDoneToTracker)
+    UploadWithTracker, SendDoneToTracker, GetItemFromTracker)
 from seesaw.util import find_executable
 from tornado.ioloop import IOLoop, PeriodicCallback
 import fcntl
@@ -62,39 +62,6 @@ seesaw.externalprocess.AsyncPopen = AsyncPopenFixed
 # # End AsyncPopen fix
 
 
-class GetItemFromTracker(TrackerRequest):
-    def __init__(self, tracker_url, downloader, version=None):
-        TrackerRequest.__init__(self, "GetItemFromTracker", tracker_url, "request", may_be_canceled=True)
-        self.downloader = downloader
-        self.version = version
-
-    def data(self, item):
-        data = {"downloader": realize(self.downloader, item), "api_version": "2"}
-        if self.version:
-            data["version"] = realize(self.version, item)
-        return data
-
-    def process_body(self, body, item):
-        data = json.loads(body)
-        if "item_name" in data:
-            for (k, v) in data.iteritems():
-                item[k] = v
-            # #print item
-            if not "task_urls" in item:
-                # If no task_urls in item, we must get them from task_urls_url
-                pattern = item["task_urls_pattern"]
-                task_urls_data = urllib2.urlopen(item["task_urls_url"]).read()
-                item["task_urls"] = list(pattern % (u,) for u in gunzip_string(task_urls_data).rstrip('\n').decode('utf-8').split(u'\n'))
-
-            item.log_output("Received item '%s' from tracker with %d URLs; first URL is %r\n" % (
-                item["item_name"], len(item["task_urls"]), item["task_urls"][0]))
-            self.complete_item(item)
-        else:
-            item.log_output("Tracker responded with empty response.\n")
-            self.schedule_retry(item)
-
-
-
 ###########################################################################
 # Find a useful Wget+Lua executable.
 #
@@ -124,9 +91,12 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20130729.00"
+VERSION = "20130801.01"
 USER_AGENT = "ArchiveTeam"
+# TRACKER_ID = 'test1'
+# TRACKER_HOST = 'localhost:8030'
 TRACKER_ID = 'puush'
+TRACKER_HOST = 'tracker.archiveteam.org'
 
 ###########################################################################
 # This section defines project-specific tasks.
@@ -134,6 +104,15 @@ TRACKER_ID = 'puush'
 # Simple tasks (tasks that do not need any concurrency) are based on the
 # SimpleTask class and have a process(item) method that is called for
 # each item.
+
+
+class ExtraItemParams(SimpleTask):
+    def __init__(self):
+        SimpleTask.__init__(self, 'ExtraItemParams')
+
+    def process(self, item):
+        item['wget_exit_status'] = None
+
 
 class PrepareDirectories(SimpleTask):
     """
@@ -168,11 +147,16 @@ class PrepareDirectories(SimpleTask):
         open("%(item_dir)s/%(warc_file_base)s.warc.gz" % item, "w").close()
 
 
+class WgetDownloadSaveExitStatus(WgetDownload):
+    def handle_process_result(self, exit_code, item):
+        item['wget_exit_status'] = exit_code
+        WgetDownload.handle_process_result(self, exit_code, item)
+
+
 class MoveFiles(SimpleTask):
     """
       After downloading, this task moves the warc file from the
-      item["item_dir"] directory to the item["data_dir"], and removes
-      the files in the item["item_dir"] directory.
+      item["item_dir"] directory to the item["data_dir"]
       """
     def __init__(self):
         SimpleTask.__init__(self, "MoveFiles")
@@ -181,7 +165,21 @@ class MoveFiles(SimpleTask):
         os.rename("%(item_dir)s/%(warc_file_base)s.warc.gz" % item,
                 "%(data_dir)s/%(warc_file_base)s.warc.gz" % item)
 
+
+class CleanUpItemDir(SimpleTask):
+    def __init__(self):
+        SimpleTask.__init__(self, "CleanUpItemDir")
+
+    def process(self, item):
         shutil.rmtree("%(item_dir)s" % item)
+
+
+def prepare_stats_id_function(item):
+    return json.dumps({"wget_exit_status": item["wget_exit_status"]})
+
+
+def is_wget_exit_ok(item):
+    return not item['wget_exit_status']
 
 
 ###########################################################################
@@ -191,63 +189,86 @@ class MoveFiles(SimpleTask):
 # be too big. The deadline is optional.
 project = Project(
     title="Puush",
-  project_html="""
+    project_html="""
     <img class="project-logo" alt="" src="http://archiveteam.org/images/b/b2/Puush_logo.png" />
-    <h2>Puush <span class="links"><a href="http://puush.me/">Website</a> &middot; <a href="http://tracker.archiveteam.org/%s/">Leaderboard</a></span></h2>
+    <h2>Puush <span class="links"><a href="http://puush.me/">Website</a> &middot; <a href="http://%s/%s/">Leaderboard</a></span></h2>
     <p><b>Puush</b> adds expiry dates to their files.</p>
-  """ % TRACKER_ID
-  # , utc_deadline = datetime.datetime(2013,08,01, 00,00,1)
+    """ % (TRACKER_HOST, TRACKER_ID)
+    # , utc_deadline = datetime.datetime(2013,08,01, 00,00,1)
 )
 
 pipeline = Pipeline(
-  GetItemFromTracker("http://tracker.archiveteam.org/%s" % TRACKER_ID, downloader, VERSION),
-  PrepareDirectories(warc_prefix="xanga.com"),
-  WgetDownload([ WGET_LUA,
-      "-U", USER_AGENT,
-      "-nv",
-      "-o", ItemInterpolation("%(item_dir)s/wget.log"),
-      "--lua-script", "puush.lua",
-      "--no-check-certificate",
-      "--output-document", ItemInterpolation("%(item_dir)s/wget.tmp"),
-      "--truncate-output",
-      "-e", "robots=off",
-      "--rotate-dns",
-      "--timeout", "60",
-      "--tries", "20",
-      "--waitretry", "5",
-      "--warc-file", ItemInterpolation("%(item_dir)s/%(warc_file_base)s"),
-      "--warc-header", "operator: Archive Team",
-      "--warc-header", "puush-dld-script-version: " + VERSION,
-      ItemInterpolation("http://puu.sh/%(item_name)s")
-    ],
-    max_tries=2,
-    accept_on_exit_code=[ 0],
-  ),
-  PrepareStatsForTracker(
-    defaults={ "downloader": downloader, "version": VERSION },
-    file_groups={
-      "data": [ ItemInterpolation("%(item_dir)s/%(warc_file_base)s.warc.gz") ]
-    }
-  ),
-  MoveFiles(),
-  LimitConcurrent(NumberConfigValue(min=1, max=4, default="1", name="shared:rsync_threads", title="Rsync threads", description="The maximum number of concurrent uploads."),
-    UploadWithTracker(
-      "http://tracker.archiveteam.org/%s" % TRACKER_ID,
-      downloader=downloader,
-      version=VERSION,
-      files=[
-        ItemInterpolation("%(data_dir)s/%(warc_file_base)s.warc.gz")
-      ],
-      rsync_target_source_path=ItemInterpolation("%(data_dir)s/"),
-      rsync_extra_args=[
-        "--recursive",
-        "--partial",
-        "--partial-dir", ".rsync-tmp"
-      ]
+    GetItemFromTracker("http://%s/%s" % (TRACKER_HOST, TRACKER_ID), downloader, VERSION),
+    ExtraItemParams(),
+    PrepareDirectories(warc_prefix="puush"),
+    WgetDownloadSaveExitStatus([ WGET_LUA,
+          "-U", USER_AGENT,
+          "-nv",
+          "-o", ItemInterpolation("%(item_dir)s/wget.log"),
+          "--lua-script", "puush.lua",
+          "--no-check-certificate",
+          "--output-document", ItemInterpolation("%(item_dir)s/wget.tmp"),
+          "--truncate-output",
+          "-e", "robots=off",
+          "--rotate-dns",
+          "--timeout", "60",
+          "--tries", "20",
+          "--waitretry", "5",
+          "--warc-file", ItemInterpolation("%(item_dir)s/%(warc_file_base)s"),
+          "--warc-header", "operator: Archive Team",
+          "--warc-header", "puush-dld-script-version: " + VERSION,
+          ItemInterpolation("http://puu.sh/%(item_name)s")
+        ],
+        max_tries=2,
+        accept_on_exit_code=[0, 100, 101],  # see the lua script
     ),
-  ),
-  SendDoneToTracker(
-    tracker_url="http://tracker.archiveteam.org/%s" % TRACKER_ID,
-    stats=ItemValue("stats")
-  )
+    ConditionalTask(
+        is_wget_exit_ok,
+        PrepareStatsForTracker(
+            defaults={ "downloader": downloader, "version": VERSION },
+            file_groups={
+                "data": [ ItemInterpolation("%(item_dir)s/%(warc_file_base)s.warc.gz") ]
+            },
+            id_function=prepare_stats_id_function,
+        )
+    ),
+    ConditionalTask(
+        lambda item: not is_wget_exit_ok(item),
+        PrepareStatsForTracker(
+            defaults={ "downloader": downloader, "version": VERSION },
+            file_groups={
+                "data": []
+            },
+            id_function=prepare_stats_id_function,
+        )
+    ),
+    ConditionalTask(is_wget_exit_ok, MoveFiles()),
+    CleanUpItemDir(),
+    LimitConcurrent(
+        NumberConfigValue(min=1, max=4, default="1",
+            name="shared:rsync_threads",
+            title="Rsync threads",
+            description="The maximum number of concurrent uploads."),
+        ConditionalTask(
+            is_wget_exit_ok,
+            UploadWithTracker(
+                "http://%s/%s" % (TRACKER_HOST, TRACKER_ID),
+                downloader=downloader,
+                version=VERSION,
+                files=[
+                    ItemInterpolation("%(data_dir)s/%(warc_file_base)s.warc.gz")
+                ],
+                rsync_target_source_path=ItemInterpolation("%(data_dir)s/"),
+                rsync_extra_args=[
+                "--recursive",
+                "--partial",
+                "--partial-dir", ".rsync-tmp"
+                ]
+            )
+        )
+    ),
+    SendDoneToTracker(
+        tracker_url="http://%s/%s" % (TRACKER_HOST, TRACKER_ID),
+        stats=ItemValue("stats")
+    )
 )
