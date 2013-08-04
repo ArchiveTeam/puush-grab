@@ -94,12 +94,13 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20130801.02"
+VERSION = "20130803.50"
 USER_AGENT = "ArchiveTeam"
 # TRACKER_ID = 'test1'
 # TRACKER_HOST = 'localhost:8030'
 TRACKER_ID = 'puush'
-TRACKER_HOST = 'tracker.archiveteam.org'
+#TRACKER_HOST = 'tracker.archiveteam.org'
+TRACKER_HOST = 'b07s57le.corenetworks.net:8031'
 
 # these must match from the lua script
 EXIT_STATUS_PERMISSION_DENIED = 100
