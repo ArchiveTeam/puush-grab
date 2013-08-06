@@ -38,24 +38,19 @@ def main():
             for line in f:
                 exclusion_set.add(base62_decode(line.strip()))
 
-    range_start = None
-    range_size = None
+    l = []
     for i in xrange(args.start_int, args.end_int + 1):
-        if range_start is None:
-            range_start = i
-            range_size = 1
-    
-        if i in exclusion_set or i == args.end_int or range_size >= args.range:
-            if range_size == 1:
-                 print(base62_encode(i))
-            else:
-                print('{},{}'.format(base62_encode(range_start),
-                    base62_encode(range_start + range_size - 1)))
+        if i not in exclusion_set:
+            l.append(i)
 
-            range_start = None
-            rage_size = None
-        else:
-            range_size += 1
+        if i in exclusion_set or i == args.end_int or len(l) >= args.range:
+            if len(l) == 1:
+                print(base62_encode(l[0]))
+            elif l:
+                print('{},{}'.format(base62_encode(l[0]),
+                    base62_encode(l[-1])))
+            l = []
+
 
 
 if __name__ == '__main__':
