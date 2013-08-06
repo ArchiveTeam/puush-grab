@@ -26,6 +26,8 @@ def main():
     
     log_arg_parser = sub_parsers.add_parser('log',
         help='Dump out log with privacy')
+    log_arg_parser.add_argument('--scrub-username', action='store_true',
+        help='Scrub out the usernames as well')
     log_arg_parser.set_defaults(func=log_command)
     
     args = arg_parser.parse_args()
@@ -74,6 +76,9 @@ def log_command(args):
             doc['ip'] = '<scrubbed>'
             id_doc = json.loads(doc['id'])
             doc['id'] = id_doc
+            
+            if args.scrub_username:
+                doc['by'] = '<scrubbed>'
             
             print(json.dumps(doc))
             
