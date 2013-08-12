@@ -25,8 +25,8 @@ end
 
 wget.callbacks.httploop_result = function(url, err, http_stat)
   local code = http_stat.statcode
---  io.stdout:write("\nServer returned status "..code.."\n")
---  io.stdout:flush()
+  io.stdout:write("  Server returned status "..code.."\n")
+  io.stdout:flush()
 
   if code == 200 then
     local html = read_file(http_stat["local_file"])

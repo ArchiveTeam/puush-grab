@@ -96,7 +96,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20130805.00"
+VERSION = "20130811.00"
 USER_AGENT = "ArchiveTeam"
 # TRACKER_ID = 'test1'
 # TRACKER_HOST = 'localhost:8030'
@@ -346,6 +346,9 @@ class WgetDownloadMany(Task):
 
 
 class SpecializedWgetDownloadMany(WgetDownloadMany):
+    SUCCESS_DELAY = 0.2  # seconds
+    ERROR_DELAY = 60 * 5 # seconds
+
     def process_one(self, item):
         sub_item_name = item['WgetDownloadMany.current_url'].rsplit('/', 1)[-1]
 
@@ -360,13 +363,20 @@ class SpecializedWgetDownloadMany(WgetDownloadMany):
 
     def handle_process_result(self, exit_code, item):
         self.save_exit_code(exit_code, item)
-        WgetDownloadMany.handle_process_result(self, exit_code, item)
+        delay_seconds = random.uniform(self.SUCCESS_DELAY * 0.5,
+                self.SUCCESS_DELAY * 2.0)
+
+        IOLoop.instance().add_timeout(
+            datetime.timedelta(seconds=delay_seconds),
+            functools.partial(WgetDownloadMany.handle_process_result,
+                self, exit_code, item))
 
     def handle_process_error(self, exit_code, item):
         self.save_exit_code(exit_code, item)
         
         if exit_code == EXIT_STATUS_OTHER_ERROR:
-            delay_seconds = random.randint(60 * 4, 60 * 6)
+            delay_seconds = random.uniform(self.ERROR_DELAY * 0.8,
+                self.ERROR_DELAY * 1.2)
             item.log_output('Unexpected response from server. '
                 'Waiting for %d seconds before continuing...' % delay_seconds)
             IOLoop.instance().add_timeout(
