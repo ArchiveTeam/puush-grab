@@ -6,7 +6,7 @@ from seesaw.pipeline import Pipeline
 from seesaw.project import Project
 from seesaw.task import SimpleTask, LimitConcurrent, ConditionalTask, Task
 from seesaw.tracker import (TrackerRequest, PrepareStatsForTracker,
-    UploadWithTracker, SendDoneToTracker, GetItemFromTracker, RsyncUpload, 
+    UploadWithTracker, SendDoneToTracker, GetItemFromTracker, RsyncUpload,
     CurlUpload)
 from seesaw.util import find_executable
 from tornado.ioloop import IOLoop, PeriodicCallback
@@ -96,12 +96,12 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20130811.00"
+VERSION = "20130820.00"
 USER_AGENT = "ArchiveTeam"
 # TRACKER_ID = 'test1'
 # TRACKER_HOST = 'localhost:8030'
 TRACKER_ID = 'puush'
-#TRACKER_HOST = 'tracker.archiveteam.org'
+# TRACKER_HOST = 'tracker.archiveteam.org'
 TRACKER_HOST = 'b07s57le.corenetworks.net:8031'
 
 # these must match from the lua script
@@ -168,29 +168,29 @@ class ExtraItemParams(SimpleTask):
 
     def process(self, item):
         item_name = item["item_name"]
-        
+
         if ',' in item_name:
             start_name, end_name = item_name.split(',', 1)
         else:
             start_name = item_name
             end_name = item_name
-        
+
         start_num = base62_decode(start_name)
         end_num = base62_decode(end_name)
-        
+
         item['sub_items'] = {}
-        
+
         assert start_num <= end_num
-        
+
         for i in xrange(start_num, end_num + 1):
             sub_item_name = base62_encode(i)
             item['sub_items'][sub_item_name] = {
                 'wget_exit_status': None,
                 'warc_file_base': None,
             }
-        
+
         item['files_to_upload'] = []
-        
+
         item.log_output('Sub items: %s' % ', '.join(item['sub_items'].keys()))
 
 
@@ -221,19 +221,18 @@ class PrepareDirectories(SimpleTask):
         if os.path.isdir(dirname):
             shutil.rmtree(dirname)
         os.makedirs(dirname)
-        
+
         item["item_dir"] = dirname
-        
+
         for sub_item_name in item['sub_items'].keys():
             warc_file_base = "%s-%s-%s" % (
-                self.warc_prefix, 
+                self.warc_prefix,
                 sub_item_name,
                 time.strftime("%Y%m%d-%H%M%S")
             )
-            
-            item['sub_items'][sub_item_name]['warc_file_base'] \
-                = warc_file_base
-            
+
+            item['sub_items'][sub_item_name]['warc_file_base'] = warc_file_base
+
             d = dict(
                 item_dir=item['item_dir'],
                 warc_file_base=warc_file_base
@@ -246,7 +245,7 @@ class URLsToDownload(object):
         l = []
         for sub_item_name in item['sub_items'].keys():
             l.append('http://puu.sh/%s' % sub_item_name)
-        
+
         return l
 
 
@@ -261,7 +260,7 @@ class WgetDownloadMany(Task):
         self.env = env
         self.stdin_data_function = stdin_data_function
         self.unrealized_urls = urls
-    
+
     def enqueue(self, item):
         self.start_item(item)
         item.log_output("Starting %s for %s\n" % (self, item.description()))
@@ -270,28 +269,28 @@ class WgetDownloadMany(Task):
         item['WgetDownloadMany.urls_index'] = 0
         item['WgetDownloadMany.current_url'] = None
         self.process(item)
-        
+
     def process(self, item):
         self.set_next_url(item)
         self.process_one(item)
-    
+
     def set_next_url(self, item):
         urls_index = item['WgetDownloadMany.urls_index']
         urls = item['WgetDownloadMany.urls']
-        
+
         if urls_index < len(urls):
             item['WgetDownloadMany.current_url'] = urls[urls_index]
             item['WgetDownloadMany.urls_index'] += 1
             return True
         else:
             return False
-    
+
     def process_one(self, item):
         with self.task_cwd():
             url = item['WgetDownloadMany.current_url']
-            
+
             item.log_output("Start downloading URL %s" % url)
-            
+
             p = seesaw.externalprocess.AsyncPopen(
               args=realize(self.args, item) + [url],
               env=realize(self.env, item),
@@ -347,7 +346,10 @@ class WgetDownloadMany(Task):
 
 class SpecializedWgetDownloadMany(WgetDownloadMany):
     SUCCESS_DELAY = 0.2  # seconds
-    ERROR_DELAY = 60 * 5 # seconds
+    MAX_ERROR_DELAY = 60 * 5  # seconds
+    MIN_ERROR_DELAY = 5.0  # seconds
+    EXP_RATE = 1.2
+    current_error_delay = MIN_ERROR_DELAY  # seconds
 
     def process_one(self, item):
         sub_item_name = item['WgetDownloadMany.current_url'].rsplit('/', 1)[-1]
@@ -365,6 +367,7 @@ class SpecializedWgetDownloadMany(WgetDownloadMany):
         self.save_exit_code(exit_code, item)
         delay_seconds = random.uniform(self.SUCCESS_DELAY * 0.5,
                 self.SUCCESS_DELAY * 2.0)
+        self.current_error_delay = self.MIN_ERROR_DELAY
 
         IOLoop.instance().add_timeout(
             datetime.timedelta(seconds=delay_seconds),
@@ -373,10 +376,13 @@ class SpecializedWgetDownloadMany(WgetDownloadMany):
 
     def handle_process_error(self, exit_code, item):
         self.save_exit_code(exit_code, item)
-        
+
         if exit_code == EXIT_STATUS_OTHER_ERROR:
-            delay_seconds = random.uniform(self.ERROR_DELAY * 0.8,
-                self.ERROR_DELAY * 1.2)
+            self.current_error_delay *= self.EXP_RATE
+            self.current_error_delay = min(self.current_error_delay,
+                self.MAX_ERROR_DELAY)
+
+            delay_seconds = self.current_error_delay
             item.log_output('Unexpected response from server. '
                 'Waiting for %d seconds before continuing...' % delay_seconds)
             IOLoop.instance().add_timeout(
@@ -414,7 +420,7 @@ class MoveFiles(SimpleTask):
 
             os.rename("%(item_dir)s/%(warc_file_base)s.warc.gz" % d,
                 "%(data_dir)s/%(warc_file_base)s.warc.gz" % d)
-            
+
             item['files_to_upload'].append(
                 "%(data_dir)s/%(warc_file_base)s.warc.gz" % d)
 
@@ -462,7 +468,7 @@ def files_to_upload(item):
 
 def prepare_stats_id_function(item):
     d = {'wget_exit_statuses': {}}
-    
+
     for sub_item_name in item['sub_items'].keys():
         d['wget_exit_statuses'][sub_item_name] = item['sub_items'][
             sub_item_name]['wget_exit_status']
@@ -509,7 +515,7 @@ class UploadWithTracker2(TrackerRequest):
                 if len(files) != 1:
                     item.log_output("Curl expects to upload a single file.")
                     self.fail_item(item)
-                    return_code
+                    return
 
                 inner_task = CurlUpload(data["upload_target"], files[0], self.curl_connect_timeout, self.curl_speed_limit, self.curl_speed_time, max_tries=1)
 
@@ -525,10 +531,10 @@ class UploadWithTracker2(TrackerRequest):
         else:
             item.log_output("Tracker did not provide an upload target.")
             self.schedule_retry(item)
-  
+
     def _inner_task_complete_item(self, task, item):
         self.complete_item(item)
-  
+
     def _inner_task_fail_item(self, task, item):
         self.schedule_retry(item)
 
@@ -573,7 +579,7 @@ pipeline = Pipeline(
         URLsToDownload(),
         max_tries=2,
         accept_on_exit_code=[
-            0, 
+            0,
             EXIT_STATUS_PERMISSION_DENIED,
             EXIT_STATUS_NOT_FOUND
         ],  # see the lua script, also MoveFiles
