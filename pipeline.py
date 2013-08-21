@@ -96,7 +96,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20130820.00"
+VERSION = "20130821.01"
 USER_AGENT = "ArchiveTeam"
 # TRACKER_ID = 'test1'
 # TRACKER_HOST = 'localhost:8030'
@@ -251,7 +251,7 @@ class URLsToDownload(object):
 
 class WgetDownloadMany(Task):
     '''Takes in urls, runs wget and generates multiple warcs'''
-    def __init__(self, args, urls, max_tries=1, accept_on_exit_code=[0], retry_on_exit_code=None, env=None, stdin_data_function=None):
+    def __init__(self, args, urls, retry_delay=30, max_tries=1, accept_on_exit_code=[0], retry_on_exit_code=None, env=None, stdin_data_function=None):
         Task.__init__(self, "WgetDownloadMany")
         self.args = args
         self.max_tries = max_tries
@@ -260,6 +260,7 @@ class WgetDownloadMany(Task):
         self.env = env
         self.stdin_data_function = stdin_data_function
         self.unrealized_urls = urls
+        self.retry_delay = retry_delay
 
     def enqueue(self, item):
         self.start_item(item)
@@ -385,11 +386,13 @@ class SpecializedWgetDownloadMany(WgetDownloadMany):
             delay_seconds = self.current_error_delay
             item.log_output('Unexpected response from server. '
                 'Waiting for %d seconds before continuing...' % delay_seconds)
+            self.retry_delay = 0  # we'll use our own delay
             IOLoop.instance().add_timeout(
                 datetime.timedelta(seconds=delay_seconds),
                 functools.partial(WgetDownloadMany.handle_process_error,
                     self, exit_code, item))
         else:
+            self.retry_delay = 30
             WgetDownloadMany.handle_process_error(self, exit_code, item)
 
 
@@ -577,7 +580,7 @@ pipeline = Pipeline(
           "--warc-header", "puush-dld-script-version: " + VERSION,
         ],
         URLsToDownload(),
-        max_tries=2,
+        max_tries=20,
         accept_on_exit_code=[
             0,
             EXIT_STATUS_PERMISSION_DENIED,
