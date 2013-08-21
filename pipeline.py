@@ -347,8 +347,8 @@ class WgetDownloadMany(Task):
 class SpecializedWgetDownloadMany(WgetDownloadMany):
     SUCCESS_DELAY = 0.2  # seconds
     MAX_ERROR_DELAY = 60 * 5  # seconds
-    MIN_ERROR_DELAY = 5.0  # seconds
-    EXP_RATE = 1.2
+    MIN_ERROR_DELAY = 10.0  # seconds
+    EXP_RATE = 1.5
     current_error_delay = MIN_ERROR_DELAY  # seconds
 
     def process_one(self, item):
