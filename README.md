@@ -65,7 +65,7 @@ Technical details for tracker admin and developers
 
 When "item name" is referred, they are the base 62 encoded ids of each item. "Item number" refers to the base 10 integer of the item id. The tracker is loaded up by item names (not integers).
 
-The base 62 encoding assumes an alphabet of `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz` starting from the base 10 integer of 0 and incrementing up. We're not sure if this encoding scheme matches what the website uses internally, but as long as the same alphabet ordering is used by us, it should be ok.
+The script's base 62 encoding assumes an alphabet of `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz` starting from the base 10 integer of 0 and incrementing up. Puush, however, uses an encoding of `0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ`. Therefore, it is important to be careful of this distinction. When generating item names, be sure to use a value that is unambiguously lower than the current item number in *both* alphabets.
 
 If the item contains a comma like ``abcd,abcg``, it is an item name range. It covers from ``abcd`` to ``abcg`` which is 4 items in the range.
 
