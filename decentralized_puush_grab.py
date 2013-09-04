@@ -28,6 +28,11 @@ USER_RESULT_MSG = {
 # Be careful! Some implementations have the ordering of upper and lower case
 # differently
 ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+ALPHABET_PUUSH = '0123456789abcdefghijklmnopqrstuvwxyz' \
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+assert ALPHABET != ALPHABET_PUUSH
+assert len(ALPHABET) == 62
+assert len(ALPHABET_PUUSH) == 62
 
 
 # http://stackoverflow.com/a/1119769/1524507

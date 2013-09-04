@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 '''Export data out of the redis database'''
 from __future__ import print_function
+
 import argparse
-import redis
-from decentralized_puush_grab import base62_decode, base62_encode
 import json
+import redis
+
+from decentralized_puush_grab import (base62_decode, base62_encode, ALPHABET,
+    ALPHABET_PUUSH)
 
 
 def main():
@@ -50,16 +53,21 @@ def get_redis_connection(args):
 
 def get_expanded_item_name(item_name):
     if ',' in item_name:
+        alphabet = ALPHABET
         start_item, end_item = item_name.split(',', 1)
+    elif ':' in item_name:
+        alphabet = ALPHABET_PUUSH
+        start_item, end_item = item_name.split(':', 1)
     else:
         start_item = item_name
         end_item = item_name
+        alphabet = ALPHABET_PUUSH
 
-    start_num = base62_decode(start_item)
-    end_num = base62_decode(end_item)
+    start_num = base62_decode(start_item, alphabet)
+    end_num = base62_decode(end_item, alphabet)
 
     for num in xrange(start_num, end_num + 1):
-        yield base62_encode(num)
+        yield base62_encode(num, alphabet)
 
 
 def done_command(args):

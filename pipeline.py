@@ -96,7 +96,7 @@ if not WGET_LUA:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20130821.01"
+VERSION = "20130904.00"
 USER_AGENT = "ArchiveTeam"
 # TRACKER_ID = 'test1'
 # TRACKER_HOST = 'localhost:8030'
@@ -121,6 +121,11 @@ EXIT_STATUS_OTHER_ERROR = 102
 # Be careful! Some implementations have the ordering of upper and lower case
 # differently
 ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+ALPHABET_PUUSH = '0123456789abcdefghijklmnopqrstuvwxyz' \
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+assert ALPHABET != ALPHABET_PUUSH
+assert len(ALPHABET) == 62
+assert len(ALPHABET_PUUSH) == 62
 
 
 # http://stackoverflow.com/a/1119769/1524507
@@ -171,19 +176,24 @@ class ExtraItemParams(SimpleTask):
 
         if ',' in item_name:
             start_name, end_name = item_name.split(',', 1)
+            alphabet = ALPHABET
+        elif ':' in item_name:
+            start_name, end_name = item_name.split(':', 1)
+            alphabet = ALPHABET_PUUSH
         else:
             start_name = item_name
             end_name = item_name
+            alphabet = ALPHABET_PUUSH
 
-        start_num = base62_decode(start_name)
-        end_num = base62_decode(end_name)
+        start_num = base62_decode(start_name, alphabet)
+        end_num = base62_decode(end_name, alphabet)
 
         item['sub_items'] = {}
 
         assert start_num <= end_num
 
         for i in xrange(start_num, end_num + 1):
-            sub_item_name = base62_encode(i)
+            sub_item_name = base62_encode(i, alphabet)
             item['sub_items'][sub_item_name] = {
                 'wget_exit_status': None,
                 'warc_file_base': None,
