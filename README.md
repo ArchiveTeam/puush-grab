@@ -59,6 +59,8 @@ For more options, run:
 
     ~/.local/bin/run-pipeline --help
 
+If the wget script complains about GNUTLS, please install `libgnutls-dev` as well (`gnutls-devel` on Fedora).
+
 
 Technical details for tracker admin and developers
 --------------------------------------------------
