@@ -4,7 +4,12 @@ from __future__ import print_function
 
 import argparse
 import json
-import redis
+try:
+    import redis
+except ImportError:
+    import warnings
+    warnings.warn('The optional redis module was not found.')
+
 
 from decentralized_puush_grab import (base62_decode, base62_encode, ALPHABET,
     ALPHABET_PUUSH)
