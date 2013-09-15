@@ -12,7 +12,7 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-VERSION = 20130801.01
+VERSION = 20130915.00
 USER_AGENT = 'ArchiveTeam DPG/{}'.format(VERSION)
 
 EXIT_STATUS_PERMISSION_DENIED = 100
@@ -75,8 +75,9 @@ def base62_decode(string, alphabet=ALPHABET):
 
 
 class Grabber(object):
-    def __init__(self, min_delay):
+    def __init__(self, min_delay, single_id=None):
         self._max_int = base62_decode('40000')
+        self._single_id = single_id
         self._min_delay = min_delay
         self._seconds_throttle = 1.0
         self._start_time = time.time()
@@ -95,6 +96,9 @@ class Grabber(object):
         while self._running:
             self._do_job()
 
+            if self._single_id:
+                break
+
             while time.time() < self._next_time:
                 if os.path.exists('STOP') \
                 and os.path.getmtime('STOP') > self._start_time:
@@ -106,7 +110,10 @@ class Grabber(object):
         _logger.debug('Stopping')
 
     def _do_job(self):
-        item_num = random.randint(0, self._max_int)
+        if self._single_id:
+            item_num = self._single_id
+        else:
+            item_num = random.randint(0, self._max_int)
         item_name = base62_encode(item_num)
 
         _logger.info('Starting fetch for item {} ({})'.format(item_name,
@@ -214,5 +221,7 @@ if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument(u'--delay', type=int, default=10,
         help=u'Minimum time in seconds between requests')
+    arg_parser.add_argument(u'--single', type=int,
+        help=u'Base 10 id. Instead of grabbing random items, use given number')
     args = arg_parser.parse_args()
-    Grabber(args.delay)
+    Grabber(args.delay, single_id=args.single)
