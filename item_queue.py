@@ -16,6 +16,10 @@ The min id file contains an integer of the minimum ID to use.
 
 There are currently some hard coded values which may need to be adjusted to
 your needs.
+
+Example crontab entry::
+
+    @daily cd /home/tracker/puush-grab/ && /usr/bin/env python item_queue.py item_queue.conf item_queue_min_id
 '''
 from __future__ import print_function
 
