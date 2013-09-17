@@ -23,19 +23,22 @@ Example crontab entry::
 '''
 from __future__ import print_function
 
+import ConfigParser
 import argparse
+import httplib
 import logging
 import logging.handlers
-import tweepy
-import ConfigParser
-import re
-
-from decentralized_puush_grab import base62_decode, ALPHABET_PUUSH
-import tempfile
-import subprocess
 import os
-import sys
+import re
 import shutil
+import subprocess
+import sys
+import tempfile
+import tweepy
+
+from decentralized_puush_grab import (base62_decode, ALPHABET_PUUSH,
+    base62_encode)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -81,7 +84,10 @@ class Queuer(object):
         self.search_for_ids()
 
         if self.max_item_id:
-            self.process_max_item_id()
+            if self.check_valid_id():
+                self.process_max_item_id()
+            else:
+                _logger.info('Received possible malicious ID. Quiting.')
 
     def get_min_item_id(self):
         with open(self.args.min_id_path, 'r') as f:
@@ -116,6 +122,22 @@ class Queuer(object):
             return
 
         self.max_item_id = id_ints[-1]
+
+    def check_valid_id(self):
+        id_name = base62_encode(self.max_item_id, ALPHABET_PUUSH)
+        try:
+            _logger.debug('Check if %s is valid', id_name)
+            conn = httplib.HTTPConnection("puu.sh")
+            conn.request("HEAD", id_name)
+            res = conn.getresponse()
+
+            _logger.debug('Got %d %s', res.status, res.reason)
+
+            if res.status == 200:
+                return True
+
+        except Exception:
+            _logger.exception('Error checking valid url {}'.format(id_name))
 
     def process_max_item_id(self):
         if self.max_item_id <= self.min_item_id:
@@ -184,14 +206,14 @@ if __name__ == '__main__':
     log_handler = logging.handlers.RotatingFileHandler('item_queue.log',
         maxBytes=1048576,
         backupCount=10)
-    
+
     formatter = logging.Formatter(
         '%(asctime)s %(name)s %(levelname)s %(message)s')
     log_handler.setFormatter(formatter)
-    
+
     _logger.setLevel(logging.DEBUG)
     _logger.addHandler(log_handler)
-    
+
 
     lock_file = '/tmp/item_queue_lock'
 
@@ -210,7 +232,7 @@ if __name__ == '__main__':
             os.remove(lock_file)
     except Exception as e:
         _logger.exception('Queuer error!')
-        raise e
+        error_type, error_value, traceback = sys.exc_info()
+        raise error_type, error_value, traceback
 
     _logger.info('Done.')
-
