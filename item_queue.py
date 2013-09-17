@@ -163,6 +163,7 @@ class Queuer(object):
                 raise Exception('item_name_gen failed. return code {}'.format(
                     proc.returncode))
 
+            self.save_fail_sentinel_file()
             self.save_new_min_id()
 
             _logger.debug('Queuing item list')
@@ -176,9 +177,10 @@ class Queuer(object):
                 proc.communicate()
 
             if proc.returncode != 0:
-                self.save_fail_sentinel_file()
                 raise Exception('enqueue failed. return code {}'.format(
                     proc.returncode))
+
+            self.remove_fail_sentinel_file()
 
     def save_new_min_id(self):
         old_path = '%s-old' % self.args.min_id_path
@@ -198,6 +200,11 @@ class Queuer(object):
         with open(path, 'wb'):
             pass
 
+    def remove_fail_sentinel_file(self):
+        path = '%s-fail' % self.args.min_id_path
+
+        os.remove(path)
+
     def check_fail_sentinel_file(self):
         path = '%s-fail' % self.args.min_id_path
         return os.path.exists(path)
@@ -213,7 +220,6 @@ if __name__ == '__main__':
 
     _logger.setLevel(logging.DEBUG)
     _logger.addHandler(log_handler)
-
 
     lock_file = '/tmp/item_queue_lock'
 
