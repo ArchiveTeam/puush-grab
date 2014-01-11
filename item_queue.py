@@ -128,7 +128,7 @@ class Queuer(object):
         try:
             _logger.debug('Check if %s is valid', id_name)
             conn = httplib.HTTPConnection("puu.sh")
-            conn.request("HEAD", id_name)
+            conn.request("HEAD", '/' + id_name)
             res = conn.getresponse()
 
             _logger.debug('Got %d %s', res.status, res.reason)
